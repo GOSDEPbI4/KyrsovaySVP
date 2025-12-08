@@ -3,24 +3,19 @@
 #include <QHBoxLayout>
 #include <QWidget>
 #include <QLabel>
-#include <QFile>
-#include <QTextStream>
-#include <QJsonDocument>
-#include <QJsonArray>
-#include <QDebug>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , currentNoteId("")
 {
+    noteManager = new NoteManager();
     setupUI();
-    loadNotes();
     updateNoteList();
 }
 
 MainWindow::~MainWindow()
 {
-    saveNotes();
+    delete noteManager;
 }
 
 void MainWindow::setupUI()
@@ -60,7 +55,7 @@ void MainWindow::setupUI()
 
     QLabel *labelLabel = new QLabel("Лейбл:", this);
     labelCombo = new QComboBox(this);
-    labelCombo->addItems(LABELS);
+    labelCombo->addItems(noteManager->getAvailableLabels());
 
     formLayout->addWidget(titleLabel);
     formLayout->addWidget(titleEdit);
@@ -95,63 +90,23 @@ void MainWindow::setupUI()
     resize(800, 600);
 }
 
-void MainWindow::loadNotes()
-{
-    QFile file(NOTES_FILE);
-    if (!file.open(QIODevice::ReadOnly)) {
-        return;
-    }
-
-    QByteArray data = file.readAll();
-    file.close();
-
-    QJsonDocument doc = QJsonDocument::fromJson(data);
-    if (doc.isNull()) {
-        return;
-    }
-
-    QJsonArray notesArray = doc.array();
-    notes.clear();
-
-    for (int i = 0; i < notesArray.size(); ++i) {
-        Note note = Note::fromJson(notesArray[i].toObject());
-        notes.append(note);
-    }
-}
-
-void MainWindow::saveNotes()
-{
-    QJsonArray notesArray;
-
-    for (const Note &note : notes) {
-        notesArray.append(note.toJson());
-    }
-
-    QJsonDocument doc(notesArray);
-    QFile file(NOTES_FILE);
-
-    if (!file.open(QIODevice::WriteOnly)) {
-        return;
-    }
-
-    file.write(doc.toJson());
-    file.close();
-}
-
 void MainWindow::updateNoteList()
 {
     notesList->clear();
 
     QString filter = filterCombo->currentText();
+    QList<Note> notesToShow;
 
-    for (const Note &note : notes) {
-        if (filter != "Все" && note.getLabel() != filter) {
-            continue;
-        }
+    if (filter == "Все") {
+        notesToShow = noteManager->getAllNotes();
+    } else {
+        notesToShow = noteManager->getNotesByLabel(filter);
+    }
 
+    for (const Note &note : notesToShow) {
         QString displayText = QString("%1 [%2]")
-                                  .arg(note.getTitle())
-                                  .arg(note.getLabel());
+        .arg(note.getTitle())
+            .arg(note.getLabel());
 
         QListWidgetItem *item = new QListWidgetItem(displayText);
         item->setData(Qt::UserRole, note.getId());
@@ -169,11 +124,9 @@ void MainWindow::addNewNote()
         return;
     }
 
-    Note newNote(title, text, label);
-    notes.append(newNote);
-
+    noteManager->addNote(title, text, label);
+    clearForm();
     updateNoteList();
-    saveNotes();
 }
 
 void MainWindow::editNote()
@@ -184,18 +137,12 @@ void MainWindow::editNote()
     }
 
     QString noteId = item->data(Qt::UserRole).toString();
+    QString title = titleEdit->text();
+    QString text = textEdit->toPlainText();
+    QString label = labelCombo->currentText();
 
-    for (int i = 0; i < notes.size(); ++i) {
-        if (notes[i].getId() == noteId) {
-            notes[i].setTitle(titleEdit->text());
-            notes[i].setText(textEdit->toPlainText());
-            notes[i].setLabel(labelCombo->currentText());
-
-            updateNoteList();
-            saveNotes();
-            return;
-        }
-    }
+    noteManager->updateNote(noteId, title, text, label);
+    updateNoteList();
 }
 
 void MainWindow::deleteNote()
@@ -207,15 +154,9 @@ void MainWindow::deleteNote()
 
     QString noteId = item->data(Qt::UserRole).toString();
 
-    for (int i = 0; i < notes.size(); ++i) {
-        if (notes[i].getId() == noteId) {
-            notes.removeAt(i);
-            break;
-        }
-    }
-
+    noteManager->deleteNote(noteId);
+    clearForm();
     updateNoteList();
-    saveNotes();
 }
 
 void MainWindow::onNoteSelected(QListWidgetItem *item)
@@ -223,8 +164,10 @@ void MainWindow::onNoteSelected(QListWidgetItem *item)
     if (!item) return;
 
     QString noteId = item->data(Qt::UserRole).toString();
+    currentNoteId = noteId;
 
-    for (const Note &note : notes) {
+    QList<Note> allNotes = noteManager->getAllNotes();
+    for (const Note &note : allNotes) {
         if (note.getId() == noteId) {
             titleEdit->setText(note.getTitle());
             textEdit->setText(note.getText());
@@ -233,8 +176,6 @@ void MainWindow::onNoteSelected(QListWidgetItem *item)
             if (index != -1) {
                 labelCombo->setCurrentIndex(index);
             }
-
-            currentNoteId = noteId;
             break;
         }
     }
@@ -243,4 +184,12 @@ void MainWindow::onNoteSelected(QListWidgetItem *item)
 void MainWindow::filterNotes()
 {
     updateNoteList();
+}
+
+void MainWindow::clearForm()
+{
+    titleEdit->clear();
+    textEdit->clear();
+    labelCombo->setCurrentIndex(0);
+    currentNoteId = "";
 }

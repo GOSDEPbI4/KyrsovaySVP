@@ -1,11 +1,10 @@
+#include "notemanager.hpp"
 #include <QMainWindow>
 #include <QListWidget>
 #include <QLineEdit>
 #include <QTextEdit>
 #include <QComboBox>
 #include <QPushButton>
-#include <QList>
-#include "note.hpp"
 
 class MainWindow : public QMainWindow
 {
@@ -24,9 +23,10 @@ private slots:
 
 private:
     void setupUI();
-    void loadNotes();
-    void saveNotes();
     void updateNoteList();
+    void clearForm();
+
+    NoteManager *noteManager;
 
     QListWidget *notesList;
     QLineEdit *titleEdit;
@@ -38,9 +38,5 @@ private:
     QPushButton *editButton;
     QPushButton *deleteButton;
 
-    QList<Note> notes;
     QString currentNoteId;
-
-    const QString NOTES_FILE = "notes.json";
-    const QStringList LABELS = {"РАБОТА", "ЛИЧНОЕ", "УЧЁБА"};
 };
